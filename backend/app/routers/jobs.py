@@ -66,6 +66,19 @@ def _build_query_terms(resume: dict, max_terms: int) -> List[str]:
     candidates.extend(titles[:4])
     candidates.extend(["software engineer", "backend engineer", "data analyst", "data engineer"])
 
+    # Add seniority variants for broader role search.
+    seniority_variants: List[str] = []
+    for term in list(candidates):
+        t = term.strip()
+        low = t.lower()
+        if not t:
+            continue
+        if low.startswith(("senior ", "lead ", "principal ", "staff ")):
+            continue
+        seniority_variants.append(f"senior {t}")
+        seniority_variants.append(f"lead {t}")
+    candidates.extend(seniority_variants)
+
     deduped: List[str] = []
     seen = set()
     for term in candidates:

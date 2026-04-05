@@ -16,6 +16,17 @@ def test_build_query_terms_happy_path():
     assert "software engineer" in lowered or "backend engineer" in lowered
 
 
+def test_build_query_terms_adds_senior_lead_variants():
+    resume = {
+        "search_terms": ["java developer"],
+        "parsed_data": {"role_terms": ["software engineer"], "skills": [], "experience": []},
+    }
+    terms = _build_query_terms(resume, 12)
+    lowered = [t.lower() for t in terms]
+    assert any(t.startswith("senior ") for t in lowered)
+    assert any(t.startswith("lead ") for t in lowered)
+
+
 def test_score_job_happy_path():
     job = {
         "title": "Python Backend Engineer",
