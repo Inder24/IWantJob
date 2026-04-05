@@ -72,6 +72,10 @@ class FounditSearchService:
             snippet = (item.get("snippet") or "").strip()
             if not title or not link:
                 continue
+            lower_link = link.lower()
+            lower_title = title.lower()
+            if "/jobs/search" in lower_link or "jobs in singapore" in lower_title:
+                continue
             job_id = str(item.get("position") or link)
             normalized.append(
                 {

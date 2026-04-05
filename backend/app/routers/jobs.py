@@ -336,6 +336,23 @@ async def auto_search_jobs(
     if len(top4) < 4:
         top4.extend(fallback[: 4 - len(top4)])
 
+    # Prefer source diversity in top-4 when possible
+    diversified: List[Dict[str, object]] = []
+    used_platforms = set()
+    for job in top4:
+        platform = str(job.get("platform") or "").lower()
+        if platform and platform not in used_platforms:
+            diversified.append(job)
+            used_platforms.add(platform)
+    if len(diversified) < 4:
+        for job in top4:
+            if job in diversified:
+                continue
+            diversified.append(job)
+            if len(diversified) >= 4:
+                break
+    top4 = diversified[:4]
+
     # Mark surfaced top jobs as seen for today
     for job in top4:
         k = _clean_term(str(job.get("url") or ""))

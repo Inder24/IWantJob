@@ -70,6 +70,13 @@ class IndeedSearchService:
             snippet = (item.get("snippet") or "").strip()
             if not title or not link:
                 continue
+            lower_title = title.lower()
+            lower_link = link.lower()
+            # Skip broad listing/aggregate pages
+            if "/jobs?" in lower_link or "jobs, employment" in lower_title or title.startswith("100+ "):
+                continue
+            if "indeed.com/jobs" in lower_link and "viewjob" not in lower_link:
+                continue
             job_id = str(item.get("position") or link)
             normalized.append(
                 {

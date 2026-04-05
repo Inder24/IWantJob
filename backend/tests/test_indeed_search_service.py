@@ -39,3 +39,21 @@ def test_indeed_service_normalizes(monkeypatch):
     assert len(out) == 1
     assert out[0]["platform"] == "indeed"
     assert out[0]["company"] == "Acme"
+
+
+def test_indeed_service_filters_listing_pages(monkeypatch):
+    monkeypatch.setenv("SERPAPI_API_KEY", "x")
+    svc = IndeedSearchService()
+    payload = {
+        "organic_results": [
+            {
+                "position": 1,
+                "title": "100+ Software Developer Jobs, Employment April 3, 2026",
+                "link": "https://sg.indeed.com/jobs?q=software+developer",
+                "snippet": "Listing page",
+            }
+        ]
+    }
+    monkeypatch.setattr("app.services.indeed_search.requests.get", lambda *args, **kwargs: _Resp(payload))
+    out = svc.search_jobs("software developer", "Singapore", 0)
+    assert out == []
