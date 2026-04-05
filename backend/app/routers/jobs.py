@@ -1,9 +1,9 @@
 """
-Jobs router for LinkedIn search and persistence.
+Jobs router for multi-source search and persistence.
 """
 from datetime import datetime
 import uuid
-from typing import List
+from typing import Dict, List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -31,8 +31,79 @@ class GenericSearchRequest(BaseModel):
     page: int = Field(default=0, ge=0, le=10)
 
 
+class AutoSearchRequest(BaseModel):
+    location: str = Field(default="Singapore", max_length=120)
+    max_terms: int = Field(default=6, ge=1, le=12)
+    per_source_page: int = Field(default=0, ge=0, le=2)
+
+
 def _normalize_job_url(url: str) -> str:
     return (url or "").strip()
+
+
+def _clean_term(value: str) -> str:
+    return " ".join((value or "").lower().strip().split())
+
+
+def _build_query_terms(resume: dict, max_terms: int) -> List[str]:
+    parsed = (resume or {}).get("parsed_data") or {}
+    search_terms = resume.get("search_terms") or []
+    skills = parsed.get("skills") or []
+    experience = parsed.get("experience") or []
+
+    titles: List[str] = []
+    for exp in experience:
+        title = (exp or {}).get("title", "").strip()
+        if title:
+            titles.append(title)
+
+    candidates: List[str] = []
+    candidates.extend(search_terms[:8])
+    candidates.extend(titles[:4])
+    for skill in skills[:8]:
+        s = str(skill).strip()
+        if not s:
+            continue
+        candidates.append(f"{s} developer")
+        candidates.append(f"{s} engineer")
+    candidates.extend(["software engineer", "backend engineer"])
+
+    deduped: List[str] = []
+    seen = set()
+    for term in candidates:
+        cleaned = _clean_term(term)
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        deduped.append(term.strip())
+        if len(deduped) >= max_terms:
+            break
+    return deduped
+
+
+def _score_job(job: dict, terms: List[str], resume_skills: List[str], preferred_location: str) -> int:
+    title = (job.get("title") or "").lower()
+    desc = (job.get("description") or "").lower()
+    location = (job.get("location") or "").lower()
+    text = f"{title} {desc}"
+
+    score = 0
+    for term in terms:
+        t = _clean_term(term)
+        if t and t in text:
+            score += 15
+
+    for skill in resume_skills[:20]:
+        s = _clean_term(str(skill))
+        if s and s in text:
+            score += 5
+
+    pref = _clean_term(preferred_location)
+    if pref and pref in location:
+        score += 20
+    if "remote" in location:
+        score += 6
+    return min(score, 100)
 
 
 async def _upsert_jobs(db, platform: str, jobs: List[dict], query: str, location: str):
@@ -159,3 +230,74 @@ async def list_jobs(current_user: dict = Depends(get_current_user), limit: int =
     db = get_database()
     items = await db.jobs.find({}, limit=min(max(limit, 1), 100), order_by="scraped_at", desc=True)
     return {"count": len(items), "jobs": items}
+
+
+@router.post("/auto-search")
+async def auto_search_jobs(
+    payload: AutoSearchRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Run multi-source job search strategy using current user's extracted resume skills/terms.
+    """
+    db = get_database()
+    resume = await db.resumes.find_one({"user_id": current_user["_id"]})
+    if not resume:
+        raise HTTPException(status_code=404, detail="No resume found. Upload resume first.")
+    if resume.get("parsing_status") != "completed":
+        raise HTTPException(status_code=400, detail="Resume parsing not completed yet.")
+
+    terms = _build_query_terms(resume, payload.max_terms)
+    if not terms:
+        raise HTTPException(status_code=400, detail="No search terms available from resume.")
+
+    all_results: List[Tuple[str, str, dict]] = []
+    failures: List[str] = []
+
+    for term in terms:
+        for source_name, source_fn in (
+            ("linkedin", linkedin_search_service.search_jobs),
+            ("indeed", indeed_search_service.search_jobs),
+            ("foundit", foundit_search_service.search_jobs),
+        ):
+            try:
+                jobs = source_fn(term, payload.location, payload.per_source_page)
+                await _upsert_jobs(db, source_name, jobs, term, payload.location)
+                for job in jobs:
+                    all_results.append((source_name, term, job))
+            except Exception as exc:
+                failures.append(f"{source_name}:{term} -> {str(exc)}")
+
+    resume_skills = ((resume.get("parsed_data") or {}).get("skills") or [])
+    ranked: List[Dict[str, object]] = []
+    for source_name, term, job in all_results:
+        ranked.append(
+            {
+                **job,
+                "source_query": term,
+                "match_score": _score_job(job, terms, resume_skills, payload.location),
+                "platform": source_name,
+            }
+        )
+
+    # Deduplicate cross-platform by URL fallback to title+company
+    deduped: List[Dict[str, object]] = []
+    seen = set()
+    for job in sorted(ranked, key=lambda x: x.get("match_score", 0), reverse=True):
+        key = _clean_term(str(job.get("url") or ""))
+        if not key:
+            key = f"{_clean_term(str(job.get('title', '')))}::{_clean_term(str(job.get('company', '')))}"
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(job)
+
+    return {
+        "message": "Auto search completed",
+        "search_terms_used": terms,
+        "location": payload.location,
+        "total_candidates": len(ranked),
+        "deduped_count": len(deduped),
+        "failures": failures[:20],
+        "jobs": deduped[:100],
+    }

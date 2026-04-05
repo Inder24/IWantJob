@@ -87,6 +87,7 @@ The app currently runs on local SQLite (`backend/job_search.db`) via `app/databa
 - `POST /api/jobs/linkedin/search` ← fetch from LinkedIn via SerpAPI and upsert locally
 - `POST /api/jobs/indeed/search` ← fetch Indeed.sg jobs via SerpAPI Google engine
 - `POST /api/jobs/foundit/search` ← fetch Foundit.sg jobs via SerpAPI Google engine
+- `POST /api/jobs/auto-search` ← run resume-skill-driven strategy across all sources
 - `GET /api/jobs/me` ← list stored jobs from local DB
 
 ## How it works (current flow)
@@ -138,6 +139,17 @@ curl -X POST http://localhost:8000/api/jobs/foundit/search \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"backend engineer","location":"Singapore","page":0}'
+```
+
+## Auto search strategy endpoint
+
+Uses extracted resume skills + generated search terms, then searches LinkedIn + Indeed + Foundit, dedupes, and ranks by match score.
+
+```bash
+curl -X POST http://localhost:8000/api/jobs/auto-search \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"location":"Singapore","max_terms":6,"per_source_page":0}'
 ```
 
 ## Notes
