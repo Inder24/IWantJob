@@ -117,6 +117,12 @@
                         <label><input type="radio" name="workAuthMode" value="singapore_pr" checked> Singapore/PR</label>
                         <label><input type="radio" name="workAuthMode" value="work_visa"> Work Visa</label>
                     </div>
+                    <div class="auth-mode-group">
+                        <span class="auth-mode-label">Employment type:</span>
+                        <label><input type="radio" name="employmentMode" value="all" checked> All</label>
+                        <label><input type="radio" name="employmentMode" value="full_time"> Full-time</label>
+                        <label><input type="radio" name="employmentMode" value="contract"> Contract</label>
+                    </div>
                     <button onclick="runAutoJobSearch()" class="btn-primary" id="jobSearchButton">Search Jobs Now</button>
                     <div id="jobSearchMeta" class="meta-text"></div>
                     <div id="jobsList"></div>

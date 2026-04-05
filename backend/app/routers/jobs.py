@@ -40,6 +40,13 @@ class AutoSearchRequest(BaseModel):
     max_total_requests: int = Field(default=12, ge=1, le=36)
     max_concurrency: int = Field(default=3, ge=1, le=6)
     work_auth_mode: Literal["singapore_pr", "work_visa"] = Field(default="singapore_pr")
+    employment_mode: Literal["all", "full_time", "contract"] = Field(default="all")
+
+
+class JobViewTrackRequest(BaseModel):
+    url: str = Field(default="", max_length=1000)
+    title: str = Field(default="", max_length=300)
+    company: str = Field(default="", max_length=200)
 
 
 def _normalize_job_url(url: str) -> str:
@@ -55,6 +62,17 @@ def _best_job_url(job: dict) -> str:
 
 def _clean_term(value: str) -> str:
     return " ".join((value or "").lower().strip().split())
+
+
+def _job_view_key(url: str, title: str, company: str) -> str:
+    key = _clean_term(url)
+    if key:
+        return key
+    title_clean = _clean_term(title)
+    company_clean = _clean_term(company)
+    if title_clean or company_clean:
+        return f"{title_clean}::{company_clean}"
+    return ""
 
 
 def _build_query_terms(resume: dict, max_terms: int) -> List[str]:
@@ -151,6 +169,29 @@ def _is_work_visa_ineligible(job: dict) -> bool:
     if not combined_text:
         return False
     return any(phrase in combined_text for phrase in WORK_VISA_EXCLUSION_PHRASES)
+
+
+CONTRACT_ROLE_PHRASES = (
+    "contract",
+    "contractor",
+    "fixed term",
+    "fixed-term",
+    "12 month",
+    "6 month",
+    "3 month",
+    "renewable",
+    "agency role",
+    "hourly",
+)
+
+
+def _is_contract_role(job: dict) -> bool:
+    title = _clean_term(str(job.get("title") or ""))
+    description = _clean_term(str(job.get("description") or ""))
+    combined_text = f"{title} {description}".strip()
+    if not combined_text:
+        return False
+    return any(phrase in combined_text for phrase in CONTRACT_ROLE_PHRASES)
 
 
 async def _upsert_jobs(db, platform: str, jobs: List[dict], query: str, location: str):
@@ -298,6 +339,36 @@ async def list_jobs(current_user: dict = Depends(get_current_user), limit: int =
     return {"count": len(items), "jobs": items}
 
 
+@router.post("/track-view")
+async def track_job_view(
+    payload: JobViewTrackRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Track an explicit user view/click for freshness and dedupe behavior."""
+    db = get_database()
+    job_key = _job_view_key(payload.url, payload.title, payload.company)
+    if not job_key:
+        raise HTTPException(status_code=400, detail="Provide at least url or title/company to track view.")
+
+    today = datetime.utcnow().date().isoformat()
+    view_id = str(uuid.uuid4())
+    try:
+        await db.user_job_views.insert_one(
+            {
+                "id": view_id,
+                "user_id": current_user["_id"],
+                "job_key": job_key,
+                "viewed_date": today,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+        )
+        return {"tracked": True, "job_key": job_key}
+    except Exception as exc:
+        if "Duplicate key error" in str(exc):
+            return {"tracked": True, "job_key": job_key, "already_tracked": True}
+        raise
+
+
 @router.post("/auto-search")
 async def auto_search_jobs(
     payload: AutoSearchRequest,
@@ -326,6 +397,7 @@ async def auto_search_jobs(
         ("foundit", foundit_search_service.search_jobs),
         ("google_jobs", google_jobs_search_service.search_jobs),
     )
+    source_candidate_counts: Dict[str, int] = {name: 0 for name, _ in source_functions}
     search_plan: List[Tuple[str, str]] = []
     for term in terms:
         for source_name, _ in source_functions:
@@ -355,6 +427,7 @@ async def auto_search_jobs(
             failures.append(str(item))
             continue
         source_name, term, jobs = item
+        source_candidate_counts[source_name] += len(jobs or [])
         if not jobs:
             continue
         try:
@@ -380,11 +453,19 @@ async def auto_search_jobs(
     if payload.work_auth_mode == "work_visa":
         filtered_ranked = [job for job in ranked if not _is_work_visa_ineligible(job)]
         filtered_out_count = len(ranked) - len(filtered_ranked)
+    employment_filtered_out = 0
+    employment_filtered_ranked = filtered_ranked
+    if payload.employment_mode == "full_time":
+        employment_filtered_ranked = [job for job in filtered_ranked if not _is_contract_role(job)]
+        employment_filtered_out = len(filtered_ranked) - len(employment_filtered_ranked)
+    elif payload.employment_mode == "contract":
+        employment_filtered_ranked = [job for job in filtered_ranked if _is_contract_role(job)]
+        employment_filtered_out = len(filtered_ranked) - len(employment_filtered_ranked)
 
     # Deduplicate cross-platform by URL fallback to title+company
     deduped: List[Dict[str, object]] = []
     seen = set()
-    for job in sorted(filtered_ranked, key=lambda x: x.get("match_score", 0), reverse=True):
+    for job in sorted(employment_filtered_ranked, key=lambda x: x.get("match_score", 0), reverse=True):
         key = _clean_term(_best_job_url(job))
         if not key:
             key = f"{_clean_term(str(job.get('title', '')))}::{_clean_term(str(job.get('company', '')))}"
@@ -429,6 +510,10 @@ async def auto_search_jobs(
             if len(diversified) >= top_n:
                 break
     top_jobs = diversified[:top_n]
+    top_source_counts: Dict[str, int] = {}
+    for job in top_jobs:
+        platform = str(job.get("platform") or "")
+        top_source_counts[platform] = top_source_counts.get(platform, 0) + 1
 
     # Mark surfaced top jobs as seen for today
     for job in top_jobs:
@@ -458,8 +543,12 @@ async def auto_search_jobs(
         "search_requests_planned": len(search_plan),
         "max_concurrency_used": max_concurrency,
         "total_candidates": len(ranked),
+        "source_candidate_counts": source_candidate_counts,
+        "top_source_counts": top_source_counts,
         "work_auth_mode": payload.work_auth_mode,
         "work_auth_filtered_out": filtered_out_count,
+        "employment_mode": payload.employment_mode,
+        "employment_filtered_out": employment_filtered_out,
         "deduped_count": len(deduped),
         "top_jobs_count": len(top_jobs),
         "failures": failures[:20],

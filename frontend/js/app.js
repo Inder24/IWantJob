@@ -210,6 +210,7 @@ async function runAutoJobSearch() {
     const button = document.getElementById('jobSearchButton');
     const metaDiv = document.getElementById('jobSearchMeta');
     const selectedMode = document.querySelector('input[name="workAuthMode"]:checked')?.value || 'singapore_pr';
+    const selectedEmploymentMode = document.querySelector('input[name="employmentMode"]:checked')?.value || 'all';
 
     try {
         errorDiv.textContent = '';
@@ -229,7 +230,8 @@ async function runAutoJobSearch() {
                 per_source_page: 0,
                 max_total_requests: 24,
                 max_concurrency: 4,
-                work_auth_mode: selectedMode
+                work_auth_mode: selectedMode,
+                employment_mode: selectedEmploymentMode
             })
         });
         const data = await response.json();
@@ -238,7 +240,9 @@ async function runAutoJobSearch() {
         }
 
         statusDiv.textContent = `✅ Job search done: ${data.deduped_count} jobs`;
-        metaDiv.textContent = `Mode: ${data.work_auth_mode || selectedMode} | Requests: ${data.search_requests_planned} | Concurrency: ${data.max_concurrency_used} | Filtered: ${data.work_auth_filtered_out || 0}`;
+        const sourceCounts = data.source_candidate_counts || {};
+        const topCounts = data.top_source_counts || {};
+        metaDiv.textContent = `Mode: ${data.work_auth_mode || selectedMode} | Employment: ${data.employment_mode || selectedEmploymentMode} | Requests: ${data.search_requests_planned} | Concurrency: ${data.max_concurrency_used} | Visa filtered: ${data.work_auth_filtered_out || 0} | Employment filtered: ${data.employment_filtered_out || 0} | Sources(candidates): LI ${sourceCounts.linkedin || 0}, Indeed ${sourceCounts.indeed || 0}, Foundit ${sourceCounts.foundit || 0}, GJobs ${sourceCounts.google_jobs || 0} | Top10: LI ${topCounts.linkedin || 0}, Indeed ${topCounts.indeed || 0}, Foundit ${topCounts.foundit || 0}, GJobs ${topCounts.google_jobs || 0}`;
         renderJobs(data.jobs || []);
     } catch (error) {
         errorDiv.textContent = error.message || 'Job search failed. Please try again.';
@@ -258,9 +262,34 @@ function renderJobs(jobs) {
         const score = job.match_score ?? 0;
         const platform = (job.platform || '').toUpperCase();
         const detailUrl = job.detail_url || job.url || '';
-        const link = detailUrl ? `<a href="${detailUrl}" target="_blank" rel="noopener noreferrer">Open</a>` : '';
+        const safeTitle = job.title || 'Unknown role';
+        const safeCompany = job.company || 'Unknown';
+        const link = detailUrl
+            ? `<a href="${detailUrl}" target="_blank" rel="noopener noreferrer" onclick="trackJobView(event, '${encodeURIComponent(detailUrl)}', '${encodeURIComponent(safeTitle)}', '${encodeURIComponent(safeCompany)}')">Open</a>`
+            : '';
         return `<p>📌 <strong>${job.title || 'Unknown role'}</strong> @ ${job.company || 'Unknown'} (${platform})<br>📍 ${job.location || 'N/A'} | 🎯 Score: ${score}/100 ${link ? `| ${link}` : ''}</p>`;
     }).join('');
+}
+
+async function trackJobView(event, encodedUrl, encodedTitle, encodedCompany) {
+    if (event) {
+        event.stopPropagation();
+    }
+    const url = decodeURIComponent(encodedUrl || '');
+    const title = decodeURIComponent(encodedTitle || '');
+    const company = decodeURIComponent(encodedCompany || '');
+    try {
+        await fetch(`${API_URL}/jobs/track-view`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url, title, company })
+        });
+    } catch (error) {
+        console.error('Track view failed:', error);
+    }
 }
 
 function formatCell(value) {

@@ -95,6 +95,7 @@ The app currently runs on local SQLite (`backend/job_search.db`) via `app/databa
 - `POST /api/jobs/foundit/search` ← fetch Foundit.sg jobs via SerpAPI Google engine
 - `POST /api/jobs/google-jobs/search` ← fetch jobs via SerpAPI Google Jobs engine
 - `POST /api/jobs/auto-search` ← run resume-skill-driven strategy across all sources
+- `POST /api/jobs/track-view` ← track explicit job click/view (`user_job_views`)
 - `GET /api/jobs/me` ← list stored jobs from local DB
 
 ## How it works (current flow)
@@ -157,7 +158,7 @@ Top 10 returned jobs are freshness-aware: jobs already surfaced today are deprio
 curl -X POST http://localhost:8000/api/jobs/auto-search \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"location":"Singapore","max_terms":6,"per_source_page":0,"max_total_requests":12,"max_concurrency":3,"work_auth_mode":"singapore_pr"}'
+  -d '{"location":"Singapore","max_terms":6,"per_source_page":0,"max_total_requests":12,"max_concurrency":3,"work_auth_mode":"singapore_pr","employment_mode":"all"}'
 ```
 
 Search budget logic:
@@ -170,9 +171,18 @@ Work authorization mode:
 - `work_auth_mode: "singapore_pr"` (default): current ranking behavior, no strict exclusion.
 - `work_auth_mode: "work_visa"`: filters out jobs that mention non-sponsorship or SG/PR-only eligibility (e.g. `pr only`, `no sponsorship`, `work pass not provided`) before dedupe/top-10 ranking.
 
+Employment mode:
+- `employment_mode: "all"` (default): no contract/full-time filter.
+- `employment_mode: "full_time"`: filters out contract-style postings.
+- `employment_mode: "contract"`: keeps contract-style postings only.
+
 Response metadata now includes:
 - `work_auth_mode`
 - `work_auth_filtered_out`
+- `employment_mode`
+- `employment_filtered_out`
+- `source_candidate_counts` (how many each source returned before top-10)
+- `top_source_counts` (how many from each source made top-10)
 
 Skill quality:
 - skills are sanitized before save (removes bracket artifacts)

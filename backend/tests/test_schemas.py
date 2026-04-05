@@ -50,3 +50,13 @@ def test_auto_search_request_defaults_work_auth_mode():
 def test_auto_search_request_rejects_invalid_work_auth_mode():
     with pytest.raises(ValidationError):
         AutoSearchRequest(work_auth_mode="invalid_mode")
+
+
+def test_auto_search_request_defaults_employment_mode():
+    req = AutoSearchRequest()
+    assert req.employment_mode == "all"
+
+
+def test_auto_search_request_rejects_invalid_employment_mode():
+    with pytest.raises(ValidationError):
+        AutoSearchRequest(employment_mode="permanent")

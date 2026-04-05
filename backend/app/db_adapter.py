@@ -100,6 +100,8 @@ class Collection:
             
         # Prepare data
         doc = document.copy()
+        if "_id" in doc:
+            del doc["_id"]
         if 'parsed_data' in doc and isinstance(doc['parsed_data'], dict):
             doc['parsed_data'] = json.dumps(doc['parsed_data'])
         if 'search_terms' in doc and isinstance(doc['search_terms'], list):

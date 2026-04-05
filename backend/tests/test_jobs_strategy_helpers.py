@@ -1,4 +1,11 @@
-from app.routers.jobs import _best_job_url, _build_query_terms, _is_work_visa_ineligible, _score_job
+from app.routers.jobs import (
+    _best_job_url,
+    _build_query_terms,
+    _is_contract_role,
+    _is_work_visa_ineligible,
+    _job_view_key,
+    _score_job,
+)
 
 
 def test_build_query_terms_happy_path():
@@ -56,3 +63,17 @@ def test_work_visa_filter_allows_generic_job():
 def test_best_job_url_prefers_detail_url():
     job = {"url": "https://example.com/generic", "detail_url": "https://example.com/detail"}
     assert _best_job_url(job) == "https://example.com/detail"
+
+
+def test_contract_role_filter_detects_contract():
+    job = {"title": "Software Engineer (Contract)", "description": "12 month renewable contract role"}
+    assert _is_contract_role(job) is True
+
+
+def test_contract_role_filter_allows_full_time():
+    job = {"title": "Software Engineer", "description": "Permanent full-time role in Singapore"}
+    assert _is_contract_role(job) is False
+
+
+def test_job_view_key_prefers_url():
+    assert _job_view_key("https://example.com/job/1", "Engineer", "Acme") == "https://example.com/job/1"
