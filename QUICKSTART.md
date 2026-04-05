@@ -100,10 +100,16 @@ From your resume PDF, the system automatically identifies:
 
 ## 🔧 Configuration
 
-Database credentials are already configured in `backend/.env`:
-- MongoDB Atlas connection: ✅ Working
-- Database: job_search_db
-- Collections: users, resumes
+Create `backend/.env` from `backend/.env.example`.
+
+Minimum required:
+- `JWT_SECRET`
+
+Only for AI ATS scoring button:
+- `ENABLE_AGENT_EXTRACTION=true`
+- `GEMINI_API_KEY=...`
+
+Everything else is optional (defaults exist in code).
 
 ## 📈 What's Next?
 

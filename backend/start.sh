@@ -27,7 +27,7 @@ fi
 # Check if .env file exists
 if [ ! -f ".env" ]; then
     echo "❌ .env file not found!"
-    echo "Please create .env file with MongoDB credentials."
+    echo "Please create .env file (copy from .env.example)."
     exit 1
 fi
 
