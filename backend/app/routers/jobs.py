@@ -12,6 +12,8 @@ import requests
 from app.database import get_database
 from app.routers.auth import get_current_user
 from app.services.linkedin_search import linkedin_search_service
+from app.services.indeed_search import indeed_search_service
+from app.services.foundit_search import foundit_search_service
 
 
 router = APIRouter()
@@ -23,40 +25,25 @@ class LinkedInSearchRequest(BaseModel):
     page: int = Field(default=0, ge=0, le=10)
 
 
+class GenericSearchRequest(BaseModel):
+    query: str = Field(..., min_length=2, max_length=200)
+    location: str = Field(default="", max_length=120)
+    page: int = Field(default=0, ge=0, le=10)
+
+
 def _normalize_job_url(url: str) -> str:
     return (url or "").strip()
 
 
-@router.post("/linkedin/search")
-async def linkedin_search(
-    payload: LinkedInSearchRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    """Search LinkedIn jobs and upsert into local jobs table."""
-    del current_user  # endpoint is protected; user context reserved for future per-user filtering
-    db = get_database()
-
-    try:
-        jobs = linkedin_search_service.search_jobs(
-            query=payload.query.strip(),
-            location=payload.location.strip(),
-            page=payload.page,
-        )
-    except (RuntimeError, requests.RequestException, ValueError) as exc:
-        raise HTTPException(status_code=502, detail=f"LinkedIn search failed: {str(exc)}")
-
+async def _upsert_jobs(db, platform: str, jobs: List[dict], query: str, location: str):
     inserted = 0
     updated = 0
     saved_ids: List[str] = []
 
     for job in jobs:
-        existing = await db.jobs.find_one(
-            {"platform": "linkedin", "job_id": job["job_id"]}
-        )
+        existing = await db.jobs.find_one({"platform": platform, "job_id": job["job_id"]})
         if not existing and job.get("url"):
-            existing = await db.jobs.find_one(
-                {"platform": "linkedin", "url": _normalize_job_url(job.get("url", ""))}
-            )
+            existing = await db.jobs.find_one({"platform": platform, "url": _normalize_job_url(job.get("url", ""))})
 
         if existing:
             await db.jobs.update_one(
@@ -81,7 +68,7 @@ async def linkedin_search(
         await db.jobs.insert_one(
             {
                 "_id": new_id,
-                "platform": "linkedin",
+                "platform": platform,
                 "job_id": job["job_id"],
                 "title": job["title"],
                 "company": job["company"],
@@ -96,14 +83,73 @@ async def linkedin_search(
         saved_ids.append(new_id)
 
     return {
-        "message": "LinkedIn jobs fetched successfully",
-        "query": payload.query,
-        "location": payload.location,
+        "message": f"{platform.title()} jobs fetched successfully",
+        "query": query,
+        "location": location,
         "fetched_count": len(jobs),
         "inserted_count": inserted,
         "updated_count": updated,
         "job_ids": saved_ids,
     }
+
+
+@router.post("/linkedin/search")
+async def linkedin_search(
+    payload: LinkedInSearchRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Search LinkedIn jobs and upsert into local jobs table."""
+    del current_user  # endpoint is protected; user context reserved for future per-user filtering
+    db = get_database()
+
+    try:
+        jobs = linkedin_search_service.search_jobs(
+            query=payload.query.strip(),
+            location=payload.location.strip(),
+            page=payload.page,
+        )
+    except (RuntimeError, requests.RequestException, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=f"LinkedIn search failed: {str(exc)}")
+
+    return await _upsert_jobs(db, "linkedin", jobs, payload.query, payload.location)
+
+
+@router.post("/indeed/search")
+async def indeed_search(
+    payload: GenericSearchRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Search Indeed jobs and upsert into local jobs table."""
+    del current_user
+    db = get_database()
+    try:
+        jobs = indeed_search_service.search_jobs(
+            query=payload.query.strip(),
+            location=payload.location.strip(),
+            page=payload.page,
+        )
+    except (RuntimeError, requests.RequestException, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=f"Indeed search failed: {str(exc)}")
+    return await _upsert_jobs(db, "indeed", jobs, payload.query, payload.location)
+
+
+@router.post("/foundit/search")
+async def foundit_search(
+    payload: GenericSearchRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Search Foundit jobs and upsert into local jobs table."""
+    del current_user
+    db = get_database()
+    try:
+        jobs = foundit_search_service.search_jobs(
+            query=payload.query.strip(),
+            location=payload.location.strip(),
+            page=payload.page,
+        )
+    except (RuntimeError, requests.RequestException, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=f"Foundit search failed: {str(exc)}")
+    return await _upsert_jobs(db, "foundit", jobs, payload.query, payload.location)
 
 
 @router.get("/me")

@@ -13,6 +13,8 @@ Simple full-stack tool to upload a resume, extract skills/search terms, and run 
 - ATS score + improvement suggestions persisted with timestamp
 - Resume dedupe by `content_hash` (same resume is reused, not duplicated)
 - LinkedIn integration (phase-1): fetch + normalize + store jobs
+- Indeed integration (phase-1): fetch + normalize + store jobs
+- Foundit integration (phase-1): fetch + normalize + store jobs
 - Simple HTML/CSS/JS frontend
 - Backend tests (`20 passed`)
 
@@ -83,6 +85,8 @@ The app currently runs on local SQLite (`backend/job_search.db`) via `app/databa
 ### Jobs
 
 - `POST /api/jobs/linkedin/search` ← fetch from LinkedIn via SerpAPI and upsert locally
+- `POST /api/jobs/indeed/search` ← fetch Indeed.sg jobs via SerpAPI Google engine
+- `POST /api/jobs/foundit/search` ← fetch Foundit.sg jobs via SerpAPI Google engine
 - `GET /api/jobs/me` ← list stored jobs from local DB
 
 ## How it works (current flow)
@@ -114,6 +118,26 @@ curl -X POST http://localhost:8000/api/jobs/linkedin/search \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"python developer","location":"Singapore","page":0}'
+```
+
+## Indeed + Foundit integration (phase-1)
+
+Uses SerpAPI Google search with Singapore targeting (`gl=sg`).
+
+Examples:
+
+```bash
+curl -X POST http://localhost:8000/api/jobs/indeed/search \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"data analyst","location":"Singapore","page":0}'
+```
+
+```bash
+curl -X POST http://localhost:8000/api/jobs/foundit/search \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"backend engineer","location":"Singapore","page":0}'
 ```
 
 ## Notes
