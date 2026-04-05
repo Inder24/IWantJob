@@ -61,6 +61,7 @@ class ParsedData(BaseModel):
     experience: List[Experience] = []
     education: List[Education] = []
     contact: Optional[Contact] = None
+    role_terms: List[str] = []
     resume_score: Optional[int] = None
     improvement_suggestions: List[str] = []
     last_ats_checked_at: Optional[str] = None

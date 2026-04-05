@@ -51,7 +51,7 @@ def _clean_term(value: str) -> str:
 def _build_query_terms(resume: dict, max_terms: int) -> List[str]:
     parsed = (resume or {}).get("parsed_data") or {}
     search_terms = resume.get("search_terms") or []
-    skills = parsed.get("skills") or []
+    role_terms = parsed.get("role_terms") or []
     experience = parsed.get("experience") or []
 
     titles: List[str] = []
@@ -61,15 +61,10 @@ def _build_query_terms(resume: dict, max_terms: int) -> List[str]:
             titles.append(title)
 
     candidates: List[str] = []
-    candidates.extend(search_terms[:8])
+    candidates.extend(role_terms[:8])
+    candidates.extend(search_terms[:4])
     candidates.extend(titles[:4])
-    for skill in skills[:8]:
-        s = str(skill).strip()
-        if not s:
-            continue
-        candidates.append(f"{s} developer")
-        candidates.append(f"{s} engineer")
-    candidates.extend(["software engineer", "backend engineer"])
+    candidates.extend(["software engineer", "backend engineer", "data analyst", "data engineer"])
 
     deduped: List[str] = []
     seen = set()
@@ -322,6 +317,46 @@ async def auto_search_jobs(
         seen.add(key)
         deduped.append(job)
 
+    # Daily freshness: avoid repeating yesterday-seen top jobs in today's top 4
+    today = datetime.utcnow().date().isoformat()
+    seen_today = await db.user_job_views.find({"user_id": current_user["_id"], "viewed_date": today}, limit=1000)
+    seen_keys = {str((row.get("job_key") or "")).strip() for row in seen_today if row.get("job_key")}
+    fresh = []
+    fallback = []
+    for job in deduped:
+        k = _clean_term(str(job.get("url") or ""))
+        if not k:
+            k = f"{_clean_term(str(job.get('title', '')))}::{_clean_term(str(job.get('company', '')))}"
+        if k in seen_keys:
+            fallback.append(job)
+        else:
+            fresh.append((k, job))
+
+    top4 = [item[1] for item in fresh[:4]]
+    if len(top4) < 4:
+        top4.extend(fallback[: 4 - len(top4)])
+
+    # Mark surfaced top jobs as seen for today
+    for job in top4:
+        k = _clean_term(str(job.get("url") or ""))
+        if not k:
+            k = f"{_clean_term(str(job.get('title', '')))}::{_clean_term(str(job.get('company', '')))}"
+        if not k:
+            continue
+        view_id = str(uuid.uuid4())
+        try:
+            await db.user_job_views.insert_one(
+                {
+                    "_id": view_id,
+                    "user_id": current_user["_id"],
+                    "job_key": k,
+                    "viewed_date": today,
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+            )
+        except Exception:
+            pass
+
     return {
         "message": "Auto search completed",
         "search_terms_used": terms,
@@ -330,6 +365,7 @@ async def auto_search_jobs(
         "max_concurrency_used": max_concurrency,
         "total_candidates": len(ranked),
         "deduped_count": len(deduped),
+        "top_jobs_count": len(top4),
         "failures": failures[:20],
-        "jobs": deduped[:100],
+        "jobs": top4,
     }

@@ -182,6 +182,7 @@ class Database:
         self.resumes = Collection(conn, 'resumes')
         self.jobs = Collection(conn, 'jobs')
         self.applications = Collection(conn, 'applications')
+        self.user_job_views = Collection(conn, 'user_job_views')
         
 class GridFS:
     """GridFS-like interface for SQLite BLOB storage"""

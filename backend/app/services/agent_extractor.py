@@ -101,6 +101,71 @@ class GeminiResumeExtractor:
             "location": intelligence.get("location"),
         }
 
+    async def validate_skills(
+        self,
+        resume_text: str,
+        candidate_skills: List[str],
+        max_skills: int = 40,
+    ) -> List[str]:
+        """Validate/clean candidate skills against resume text using Gemini when enabled."""
+        cleaned = [s.strip().lower() for s in candidate_skills if isinstance(s, str) and s.strip()]
+        if not cleaned:
+            return []
+        deduped = []
+        seen = set()
+        for s in cleaned:
+            if s in seen:
+                continue
+            seen.add(s)
+            deduped.append(s)
+        cleaned = deduped[:120]
+
+        if not self.is_enabled():
+            return cleaned[:max_skills]
+
+        prompt = (
+            "You are validating resume skills. Keep only real, role-relevant skills that are evidenced by the resume text.\n"
+            "Return ONLY valid JSON in this schema: {\"skills\": [\"...\"]}\n"
+            "Rules:\n"
+            "- choose only from CANDIDATE_SKILLS; do not invent new items.\n"
+            "- remove malformed tokens, bracket artifacts, and vague phrases.\n"
+            "- keep concise lowercase skill names.\n\n"
+            f"CANDIDATE_SKILLS:\n{json.dumps(cleaned)}\n\n"
+            f"RESUME:\n{resume_text[:12000]}"
+        )
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.model}:generateContent?key={self.api_key}"
+        )
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.1},
+        }
+        data = self._post_with_backoff(url, payload)
+        parsed = self._parse_json_text(self._response_text(data))
+        items = parsed.get("skills", [])
+        if not isinstance(items, list):
+            return cleaned[:max_skills]
+        out = []
+        for s in items:
+            if not isinstance(s, str):
+                continue
+            k = s.strip().lower()
+            if not k:
+                continue
+            if k not in cleaned:
+                continue
+            out.append(k)
+        # stable unique
+        uniq = []
+        used = set()
+        for s in out:
+            if s in used:
+                continue
+            used.add(s)
+            uniq.append(s)
+        return uniq[:max_skills]
+
     def _post_with_backoff(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         attempts = self.max_retries + 1
         for attempt in range(attempts):

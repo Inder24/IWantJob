@@ -14,6 +14,62 @@ import hashlib
 
 router = APIRouter()
 
+ROLE_KEYWORDS = (
+    "engineer",
+    "developer",
+    "scientist",
+    "analyst",
+    "manager",
+    "architect",
+    "consultant",
+    "specialist",
+    "lead",
+    "intern",
+)
+
+
+def _sanitize_skills(skills: list[str]) -> list[str]:
+    cleaned = []
+    seen = set()
+    for item in skills:
+        if not isinstance(item, str):
+            continue
+        s = item.strip().lower()
+        if not s:
+            continue
+        # remove artifacts like [ ] " ' and weird separators
+        s = s.replace("[", "").replace("]", "").replace('"', "").replace("'", "").strip(" ,;")
+        if not s or len(s) < 2:
+            continue
+        if any(ch in s for ch in ("\n", "\t")):
+            s = " ".join(s.split())
+        if s in seen:
+            continue
+        seen.add(s)
+        cleaned.append(s)
+    return cleaned[:80]
+
+
+def _build_role_terms(job_titles: list[str], search_terms: list[str]) -> list[str]:
+    candidates = []
+    candidates.extend([t.strip() for t in job_titles if isinstance(t, str)])
+    for term in search_terms:
+        if not isinstance(term, str):
+            continue
+        t = term.strip()
+        low = t.lower()
+        if any(k in low for k in ROLE_KEYWORDS):
+            candidates.append(t)
+    deduped = []
+    seen = set()
+    for c in candidates:
+        key = " ".join(c.lower().split())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(c)
+    return deduped[:12]
+
 
 async def parse_resume_background(resume_id: str, pdf_bytes: bytes):
     """Background task to parse resume"""
@@ -83,6 +139,11 @@ async def parse_resume_background(resume_id: str, pdf_bytes: bytes):
                 seen_skills.add(key)
                 merged_skills.append(s.strip())
             all_skills = merged_skills[:80]
+        all_skills = _sanitize_skills(all_skills)
+        try:
+            all_skills = await agent_extractor.validate_skills(raw_text, all_skills, max_skills=50)
+        except Exception:
+            all_skills = _sanitize_skills(all_skills)
         
         # Generate search terms
         search_terms = []
@@ -93,6 +154,7 @@ async def parse_resume_background(resume_id: str, pdf_bytes: bytes):
             search_terms.append(f"{skill} engineer")
         
         search_terms = list(set(search_terms))[:12]
+        role_terms = _build_role_terms(job_titles, search_terms)
         
         # Prepare parsed data
         parsed_data = {
@@ -103,6 +165,7 @@ async def parse_resume_background(resume_id: str, pdf_bytes: bytes):
             "education": [{"degree": deg, "institution": "", "year": ""} 
                          for deg in degrees],
             "contact": contact_info,
+            "role_terms": role_terms,
             "resume_score": agent_data.get("resume_score"),
             "improvement_suggestions": agent_data.get("improvement_suggestions", []),
         }

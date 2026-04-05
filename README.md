@@ -143,7 +143,8 @@ curl -X POST http://localhost:8000/api/jobs/foundit/search \
 
 ## Auto search strategy endpoint
 
-Uses extracted resume skills + generated search terms, then searches LinkedIn + Indeed + Foundit, dedupes, and ranks by match score.
+Uses role-first strategy (`role_terms` + job titles), then searches LinkedIn + Indeed + Foundit, dedupes, and ranks by match score.  
+Top 4 returned jobs are freshness-aware: jobs already surfaced today are deprioritized.
 
 ```bash
 curl -X POST http://localhost:8000/api/jobs/auto-search \
@@ -156,6 +157,10 @@ Search budget logic:
 - planned requests = `min(max_total_requests, max_terms * 3_sources)`
 - default request cap = `12`
 - default parallelism cap = `3`
+
+Skill quality:
+- skills are sanitized before save (removes bracket artifacts)
+- optional Gemini validation keeps only resume-evidenced, role-relevant skills
 
 ## Notes
 

@@ -120,6 +120,21 @@ async def connect_to_mongo():
                 updated_at TEXT NOT NULL
             )
         ''')
+
+        # Track seen jobs per user/day to enforce top freshness
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_job_views (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                job_key TEXT NOT NULL,
+                viewed_date TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_user_job_views_unique
+            ON user_job_views(user_id, job_key, viewed_date)
+        ''')
         
         conn.commit()
         
