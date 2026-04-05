@@ -44,9 +44,9 @@ class IndeedSearchService:
             raise RuntimeError("Indeed integration is not configured. Set SERPAPI_API_KEY.")
 
         offset = max(page, 0) * max(self.max_results, 1)
-        q = f'site:sg.indeed.com/jobs "{query}"'
+        q = f"site:sg.indeed.com/viewjob {query}"
         if location:
-            q += f' "{location}"'
+            q += f" {location}"
 
         params = {
             "engine": "google",

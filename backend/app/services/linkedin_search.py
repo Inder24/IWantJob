@@ -33,6 +33,9 @@ class LinkedInSearchService:
             params["location"] = location
 
         response = requests.get("https://serpapi.com/search.json", params=params, timeout=self.timeout)
+        if response.status_code == 400:
+            # If LinkedIn engine is unavailable for this key/plan, degrade gracefully.
+            return []
         response.raise_for_status()
         data = response.json()
         jobs = data.get("jobs", [])
