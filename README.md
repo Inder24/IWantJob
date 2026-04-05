@@ -45,23 +45,19 @@ Serve `frontend/` as static files (or open `frontend/index.html` directly).
 Frontend expects backend at:
 - `http://localhost:8000/api`
 
-## Required environment variables (`backend/.env`)
+## Environment variables (`backend/.env`)
 
-### Core
+Minimal required:
 
-- `JWT_SECRET` (required, set your own)
-- `JWT_ALGORITHM` (default `HS256`)
-- `ACCESS_TOKEN_EXPIRE_MINUTES`
-- `REFRESH_TOKEN_EXPIRE_DAYS`
-- `APP_NAME`, `APP_VERSION`
+- `JWT_SECRET`
 
-### AI / Gemini (for ATS button)
+Only if using ATS AI button:
 
 - `ENABLE_AGENT_EXTRACTION=true`
 - `GEMINI_API_KEY=...`
-- `GEMINI_MODEL=gemini-2.5-flash`
-- `GEMINI_MAX_RETRIES=3`
-- `GEMINI_BACKOFF_SECONDS=1.0`
+
+Everything else is optional (defaults are already in code).  
+Use `backend/.env.example` as your starting template.
 
 ### Database
 
