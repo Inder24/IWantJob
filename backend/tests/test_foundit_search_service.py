@@ -39,3 +39,4 @@ def test_foundit_service_normalizes(monkeypatch):
     assert len(out) == 1
     assert out[0]["platform"] == "foundit"
     assert out[0]["company"] == "Contoso"
+    assert out[0]["detail_url"] == "https://foundit.sg/job/backend-123"

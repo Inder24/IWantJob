@@ -9,7 +9,7 @@ from app.db_adapter import Database, GridFS
 load_dotenv()
 
 # Database settings
-DATABASE_FILE = "job_search.db"
+DATABASE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "job_search.db"))
 
 # Global database instance
 database = None

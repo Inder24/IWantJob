@@ -1,4 +1,4 @@
-from app.routers.jobs import _build_query_terms, _is_work_visa_ineligible, _score_job
+from app.routers.jobs import _best_job_url, _build_query_terms, _is_work_visa_ineligible, _score_job
 
 
 def test_build_query_terms_happy_path():
@@ -51,3 +51,8 @@ def test_work_visa_filter_allows_generic_job():
         "description": "Build APIs with Python and FastAPI in Singapore.",
     }
     assert _is_work_visa_ineligible(job) is False
+
+
+def test_best_job_url_prefers_detail_url():
+    job = {"url": "https://example.com/generic", "detail_url": "https://example.com/detail"}
+    assert _best_job_url(job) == "https://example.com/detail"

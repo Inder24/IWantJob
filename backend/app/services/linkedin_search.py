@@ -59,6 +59,7 @@ class LinkedInSearchService:
                     "location": (item.get("location") or "").strip(),
                     "description": (item.get("description") or "").strip(),
                     "url": link,
+                    "detail_url": link,
                     "posted_date": (item.get("detected_extensions", {}) or {}).get("posted_at"),
                     "scraped_at": now,
                 }

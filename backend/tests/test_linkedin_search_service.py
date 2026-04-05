@@ -48,3 +48,4 @@ def test_linkedin_search_service_normalizes_results(monkeypatch):
     assert out[0]["job_id"] == "123"
     assert out[0]["title"] == "Backend Engineer"
     assert out[0]["company"] == "Acme"
+    assert out[0]["detail_url"] == "https://www.linkedin.com/jobs/view/123"

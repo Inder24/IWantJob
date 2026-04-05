@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Search Tool - Admin</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🗄️ Admin - DB Explorer</h1>
+            <div class="user-info">
+                <a href="/" class="btn-secondary" style="text-decoration:none;">Back to App</a>
+                <button onclick="logoutAdmin()" class="btn-secondary">Logout</button>
+            </div>
+        </header>
+
+        <div class="card">
+            <h2>Database Tables</h2>
+            <p class="meta-text">Load tables, then inspect rows for a selected table.</p>
+            <div class="admin-controls">
+                <button onclick="loadAdminTables()" class="btn-secondary" id="adminLoadTablesButton">Load Tables</button>
+                <select id="adminTableSelect">
+                    <option value="">Select table</option>
+                </select>
+                <input type="number" id="adminLimitInput" min="1" max="200" value="50" placeholder="Limit">
+                <button onclick="loadAdminTableRows()" class="btn-primary" id="adminLoadRowsButton">Load Records</button>
+            </div>
+            <div id="adminMeta" class="meta-text"></div>
+            <div id="adminError" class="error"></div>
+            <div id="adminTableView"></div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

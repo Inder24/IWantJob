@@ -87,6 +87,7 @@ class IndeedSearchService:
                     "location": self._extract_location(title, snippet),
                     "description": snippet,
                     "url": link,
+                    "detail_url": link if "/viewjob" in lower_link else "",
                     "posted_date": None,
                     "scraped_at": now,
                 }

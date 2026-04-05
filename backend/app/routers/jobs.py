@@ -15,6 +15,7 @@ from app.routers.auth import get_current_user
 from app.services.linkedin_search import linkedin_search_service
 from app.services.indeed_search import indeed_search_service
 from app.services.foundit_search import foundit_search_service
+from app.services.google_jobs_search import google_jobs_search_service
 
 
 router = APIRouter()
@@ -43,6 +44,13 @@ class AutoSearchRequest(BaseModel):
 
 def _normalize_job_url(url: str) -> str:
     return (url or "").strip()
+
+
+def _best_job_url(job: dict) -> str:
+    detail_url = str(job.get("detail_url") or "").strip()
+    if detail_url:
+        return detail_url
+    return _normalize_job_url(str(job.get("url") or ""))
 
 
 def _clean_term(value: str) -> str:
@@ -152,8 +160,8 @@ async def _upsert_jobs(db, platform: str, jobs: List[dict], query: str, location
 
     for job in jobs:
         existing = await db.jobs.find_one({"platform": platform, "job_id": job["job_id"]})
-        if not existing and job.get("url"):
-            existing = await db.jobs.find_one({"platform": platform, "url": _normalize_job_url(job.get("url", ""))})
+        if not existing and _best_job_url(job):
+            existing = await db.jobs.find_one({"platform": platform, "url": _best_job_url(job)})
 
         if existing:
             await db.jobs.update_one(
@@ -164,7 +172,7 @@ async def _upsert_jobs(db, platform: str, jobs: List[dict], query: str, location
                         "company": job["company"],
                         "location": job.get("location", ""),
                         "description": job.get("description", ""),
-                        "url": _normalize_job_url(job.get("url", "")),
+                        "url": _best_job_url(job),
                         "posted_date": job.get("posted_date"),
                         "scraped_at": datetime.utcnow().isoformat(),
                     }
@@ -184,7 +192,7 @@ async def _upsert_jobs(db, platform: str, jobs: List[dict], query: str, location
                 "company": job["company"],
                 "location": job.get("location", ""),
                 "description": job.get("description", ""),
-                "url": _normalize_job_url(job.get("url", "")),
+                "url": _best_job_url(job),
                 "posted_date": job.get("posted_date"),
                 "scraped_at": datetime.utcnow().isoformat(),
             }
@@ -262,6 +270,25 @@ async def foundit_search(
     return await _upsert_jobs(db, "foundit", jobs, payload.query, payload.location)
 
 
+@router.post("/google-jobs/search")
+async def google_jobs_search(
+    payload: GenericSearchRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Search Google Jobs and upsert into local jobs table."""
+    del current_user
+    db = get_database()
+    try:
+        jobs = google_jobs_search_service.search_jobs(
+            query=payload.query.strip(),
+            location=payload.location.strip(),
+            page=payload.page,
+        )
+    except (RuntimeError, requests.RequestException, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=f"Google Jobs search failed: {str(exc)}")
+    return await _upsert_jobs(db, "google_jobs", jobs, payload.query, payload.location)
+
+
 @router.get("/me")
 async def list_jobs(current_user: dict = Depends(get_current_user), limit: int = 50):
     """List latest jobs from local store."""
@@ -297,6 +324,7 @@ async def auto_search_jobs(
         ("linkedin", linkedin_search_service.search_jobs),
         ("indeed", indeed_search_service.search_jobs),
         ("foundit", foundit_search_service.search_jobs),
+        ("google_jobs", google_jobs_search_service.search_jobs),
     )
     search_plan: List[Tuple[str, str]] = []
     for term in terms:
@@ -357,7 +385,7 @@ async def auto_search_jobs(
     deduped: List[Dict[str, object]] = []
     seen = set()
     for job in sorted(filtered_ranked, key=lambda x: x.get("match_score", 0), reverse=True):
-        key = _clean_term(str(job.get("url") or ""))
+        key = _clean_term(_best_job_url(job))
         if not key:
             key = f"{_clean_term(str(job.get('title', '')))}::{_clean_term(str(job.get('company', '')))}"
         if key in seen:
@@ -365,14 +393,14 @@ async def auto_search_jobs(
         seen.add(key)
         deduped.append(job)
 
-    # Daily freshness: avoid repeating yesterday-seen top jobs in today's top 4
+    # Daily freshness: avoid repeating already-seen top jobs in today's top set
     today = datetime.utcnow().date().isoformat()
     seen_today = await db.user_job_views.find({"user_id": current_user["_id"], "viewed_date": today}, limit=1000)
     seen_keys = {str((row.get("job_key") or "")).strip() for row in seen_today if row.get("job_key")}
     fresh = []
     fallback = []
     for job in deduped:
-        k = _clean_term(str(job.get("url") or ""))
+        k = _clean_term(_best_job_url(job))
         if not k:
             k = f"{_clean_term(str(job.get('title', '')))}::{_clean_term(str(job.get('company', '')))}"
         if k in seen_keys:
@@ -380,30 +408,31 @@ async def auto_search_jobs(
         else:
             fresh.append((k, job))
 
-    top4 = [item[1] for item in fresh[:4]]
-    if len(top4) < 4:
-        top4.extend(fallback[: 4 - len(top4)])
+    top_n = 10
+    top_jobs = [item[1] for item in fresh[:top_n]]
+    if len(top_jobs) < top_n:
+        top_jobs.extend(fallback[: top_n - len(top_jobs)])
 
-    # Prefer source diversity in top-4 when possible
+    # Prefer source diversity in top set when possible
     diversified: List[Dict[str, object]] = []
     used_platforms = set()
-    for job in top4:
+    for job in top_jobs:
         platform = str(job.get("platform") or "").lower()
         if platform and platform not in used_platforms:
             diversified.append(job)
             used_platforms.add(platform)
-    if len(diversified) < 4:
-        for job in top4:
+    if len(diversified) < top_n:
+        for job in top_jobs:
             if job in diversified:
                 continue
             diversified.append(job)
-            if len(diversified) >= 4:
+            if len(diversified) >= top_n:
                 break
-    top4 = diversified[:4]
+    top_jobs = diversified[:top_n]
 
     # Mark surfaced top jobs as seen for today
-    for job in top4:
-        k = _clean_term(str(job.get("url") or ""))
+    for job in top_jobs:
+        k = _clean_term(_best_job_url(job))
         if not k:
             k = f"{_clean_term(str(job.get('title', '')))}::{_clean_term(str(job.get('company', '')))}"
         if not k:
@@ -432,7 +461,7 @@ async def auto_search_jobs(
         "work_auth_mode": payload.work_auth_mode,
         "work_auth_filtered_out": filtered_out_count,
         "deduped_count": len(deduped),
-        "top_jobs_count": len(top4),
+        "top_jobs_count": len(top_jobs),
         "failures": failures[:20],
-        "jobs": top4,
+        "jobs": top_jobs,
     }

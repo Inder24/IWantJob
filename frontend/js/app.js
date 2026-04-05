@@ -227,8 +227,8 @@ async function runAutoJobSearch() {
                 location: 'Singapore',
                 max_terms: 6,
                 per_source_page: 0,
-                max_total_requests: 12,
-                max_concurrency: 3,
+                max_total_requests: 24,
+                max_concurrency: 4,
                 work_auth_mode: selectedMode
             })
         });
@@ -254,12 +254,32 @@ function renderJobs(jobs) {
         jobsDiv.innerHTML = '<p>No jobs found yet.</p>';
         return;
     }
-    jobsDiv.innerHTML = jobs.slice(0, 20).map(job => {
+    jobsDiv.innerHTML = jobs.slice(0, 10).map(job => {
         const score = job.match_score ?? 0;
         const platform = (job.platform || '').toUpperCase();
-        const link = job.url ? `<a href="${job.url}" target="_blank" rel="noopener noreferrer">Open</a>` : '';
+        const detailUrl = job.detail_url || job.url || '';
+        const link = detailUrl ? `<a href="${detailUrl}" target="_blank" rel="noopener noreferrer">Open</a>` : '';
         return `<p>📌 <strong>${job.title || 'Unknown role'}</strong> @ ${job.company || 'Unknown'} (${platform})<br>📍 ${job.location || 'N/A'} | 🎯 Score: ${score}/100 ${link ? `| ${link}` : ''}</p>`;
     }).join('');
+}
+
+function formatCell(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    if (typeof value === 'object') {
+        return JSON.stringify(value);
+    }
+    return String(value);
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
 }
 
 // Display Resume Data

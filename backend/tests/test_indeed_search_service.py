@@ -39,6 +39,7 @@ def test_indeed_service_normalizes(monkeypatch):
     assert len(out) == 1
     assert out[0]["platform"] == "indeed"
     assert out[0]["company"] == "Acme"
+    assert out[0]["detail_url"] == "https://sg.indeed.com/viewjob?jk=abc"
 
 
 def test_indeed_service_filters_listing_pages(monkeypatch):

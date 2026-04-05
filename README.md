@@ -15,8 +15,12 @@ Simple full-stack tool to upload a resume, extract skills/search terms, and run 
 - LinkedIn integration (phase-1): fetch + normalize + store jobs
 - Indeed integration (phase-1): fetch + normalize + store jobs
 - Foundit integration (phase-1): fetch + normalize + store jobs
+- Google Jobs integration (phase-1): fetch + normalize + store jobs
+- Role-first auto-search with top-10 ranking + freshness
+- Work authorization mode toggle (`singapore_pr` / `work_visa`)
+- Admin DB Explorer UI at `/admin/`
 - Simple HTML/CSS/JS frontend
-- Backend tests (`20 passed`)
+- Backend tests (focused suite passing)
 
 ## Current architecture
 
@@ -47,6 +51,8 @@ API docs:
 Serve `frontend/` as static files (or open `frontend/index.html` directly).
 Frontend expects backend at:
 - `http://localhost:8000/api`
+- Admin page:
+  - `http://localhost:3000/admin/`
 
 ## Environment variables (`backend/.env`)
 
@@ -87,6 +93,7 @@ The app currently runs on local SQLite (`backend/job_search.db`) via `app/databa
 - `POST /api/jobs/linkedin/search` ← fetch from LinkedIn via SerpAPI and upsert locally
 - `POST /api/jobs/indeed/search` ← fetch Indeed.sg jobs via SerpAPI Google engine
 - `POST /api/jobs/foundit/search` ← fetch Foundit.sg jobs via SerpAPI Google engine
+- `POST /api/jobs/google-jobs/search` ← fetch jobs via SerpAPI Google Jobs engine
 - `POST /api/jobs/auto-search` ← run resume-skill-driven strategy across all sources
 - `GET /api/jobs/me` ← list stored jobs from local DB
 
@@ -143,8 +150,8 @@ curl -X POST http://localhost:8000/api/jobs/foundit/search \
 
 ## Auto search strategy endpoint
 
-Uses role-first strategy (`role_terms` + job titles), then searches LinkedIn + Indeed + Foundit, dedupes, and ranks by match score.  
-Top 4 returned jobs are freshness-aware: jobs already surfaced today are deprioritized.
+Uses role-first strategy (`role_terms` + job titles), then searches LinkedIn + Indeed + Foundit + Google Jobs, dedupes, and ranks by match score.  
+Top 10 returned jobs are freshness-aware: jobs already surfaced today are deprioritized.
 
 ```bash
 curl -X POST http://localhost:8000/api/jobs/auto-search \
@@ -154,13 +161,14 @@ curl -X POST http://localhost:8000/api/jobs/auto-search \
 ```
 
 Search budget logic:
-- planned requests = `min(max_total_requests, max_terms * 3_sources)`
+- planned requests = `min(max_total_requests, max_terms * 4_sources)`
 - default request cap = `12`
 - default parallelism cap = `3`
+- current frontend uses `max_total_requests=24` and `max_concurrency=4` for broader coverage
 
 Work authorization mode:
 - `work_auth_mode: "singapore_pr"` (default): current ranking behavior, no strict exclusion.
-- `work_auth_mode: "work_visa"`: filters out jobs that mention non-sponsorship or SG/PR-only eligibility (e.g. `pr only`, `no sponsorship`, `work pass not provided`) before dedupe/top-4 ranking.
+- `work_auth_mode: "work_visa"`: filters out jobs that mention non-sponsorship or SG/PR-only eligibility (e.g. `pr only`, `no sponsorship`, `work pass not provided`) before dedupe/top-10 ranking.
 
 Response metadata now includes:
 - `work_auth_mode`
@@ -175,3 +183,9 @@ Skill quality:
 - Do not commit secrets (`.env` should stay local).
 - MongoDB Atlas is planned; current stable runtime uses SQLite adapter.
 - Job scraping/tracking modules are still pending.
+
+## Admin DB Explorer
+
+- `GET /api/admin/tables` → lists available tables + column metadata.
+- `GET /api/admin/tables/{table_name}/rows?limit=50` → returns table rows (limit: 1..200).
+- Available at frontend route **`/admin/`**.
