@@ -111,6 +111,11 @@
                 <div class="section">
                     <h3>🎯 Smart Job Search</h3>
                     <p class="meta-text">Runs bounded parallel search across LinkedIn, Indeed, and Foundit using your resume skills/terms.</p>
+                    <div class="auth-mode-group">
+                        <span class="auth-mode-label">Eligibility mode:</span>
+                        <label><input type="radio" name="workAuthMode" value="singapore_pr" checked> Singapore/PR</label>
+                        <label><input type="radio" name="workAuthMode" value="work_visa"> Work Visa</label>
+                    </div>
                     <button onclick="runAutoJobSearch()" class="btn-primary" id="jobSearchButton">Search Jobs Now</button>
                     <div id="jobSearchMeta" class="meta-text"></div>
                     <div id="jobsList"></div>

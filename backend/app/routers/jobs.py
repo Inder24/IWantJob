@@ -4,7 +4,7 @@ Jobs router for multi-source search and persistence.
 import asyncio
 from datetime import datetime
 import uuid
-from typing import Dict, List, Tuple
+from typing import Dict, List, Literal, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ class AutoSearchRequest(BaseModel):
     per_source_page: int = Field(default=0, ge=0, le=2)
     max_total_requests: int = Field(default=12, ge=1, le=36)
     max_concurrency: int = Field(default=3, ge=1, le=6)
+    work_auth_mode: Literal["singapore_pr", "work_visa"] = Field(default="singapore_pr")
 
 
 def _normalize_job_url(url: str) -> str:
@@ -115,6 +116,33 @@ def _score_job(job: dict, terms: List[str], resume_skills: List[str], preferred_
     if "remote" in location:
         score += 6
     return min(score, 100)
+
+
+WORK_VISA_EXCLUSION_PHRASES = (
+    "singaporean only",
+    "singaporeans only",
+    "singapore citizen only",
+    "singapore citizen",
+    "singapore pr only",
+    "pr only",
+    "citizens only",
+    "no sponsorship",
+    "not sponsoring",
+    "without sponsorship",
+    "work pass not provided",
+    "ep not provided",
+    "spass not provided",
+    "s pass not provided",
+)
+
+
+def _is_work_visa_ineligible(job: dict) -> bool:
+    title = _clean_term(str(job.get("title") or ""))
+    description = _clean_term(str(job.get("description") or ""))
+    combined_text = f"{title} {description}".strip()
+    if not combined_text:
+        return False
+    return any(phrase in combined_text for phrase in WORK_VISA_EXCLUSION_PHRASES)
 
 
 async def _upsert_jobs(db, platform: str, jobs: List[dict], query: str, location: str):
@@ -299,6 +327,8 @@ async def auto_search_jobs(
             failures.append(str(item))
             continue
         source_name, term, jobs = item
+        if not jobs:
+            continue
         try:
             await _upsert_jobs(db, source_name, jobs, term, payload.location)
             for job in jobs:
@@ -317,11 +347,16 @@ async def auto_search_jobs(
                 "platform": source_name,
             }
         )
+    filtered_out_count = 0
+    filtered_ranked = ranked
+    if payload.work_auth_mode == "work_visa":
+        filtered_ranked = [job for job in ranked if not _is_work_visa_ineligible(job)]
+        filtered_out_count = len(ranked) - len(filtered_ranked)
 
     # Deduplicate cross-platform by URL fallback to title+company
     deduped: List[Dict[str, object]] = []
     seen = set()
-    for job in sorted(ranked, key=lambda x: x.get("match_score", 0), reverse=True):
+    for job in sorted(filtered_ranked, key=lambda x: x.get("match_score", 0), reverse=True):
         key = _clean_term(str(job.get("url") or ""))
         if not key:
             key = f"{_clean_term(str(job.get('title', '')))}::{_clean_term(str(job.get('company', '')))}"
@@ -394,6 +429,8 @@ async def auto_search_jobs(
         "search_requests_planned": len(search_plan),
         "max_concurrency_used": max_concurrency,
         "total_candidates": len(ranked),
+        "work_auth_mode": payload.work_auth_mode,
+        "work_auth_filtered_out": filtered_out_count,
         "deduped_count": len(deduped),
         "top_jobs_count": len(top4),
         "failures": failures[:20],

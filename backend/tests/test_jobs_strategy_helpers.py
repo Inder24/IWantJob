@@ -1,4 +1,4 @@
-from app.routers.jobs import _build_query_terms, _score_job
+from app.routers.jobs import _build_query_terms, _is_work_visa_ineligible, _score_job
 
 
 def test_build_query_terms_happy_path():
@@ -35,3 +35,19 @@ def test_score_job_happy_path():
     }
     score = _score_job(job, ["python developer", "backend engineer"], ["python", "fastapi", "aws"], "Singapore")
     assert score > 30
+
+
+def test_work_visa_filter_detects_ineligible_phrase():
+    job = {
+        "title": "Software Engineer",
+        "description": "Singapore PR only role. Work pass not provided.",
+    }
+    assert _is_work_visa_ineligible(job) is True
+
+
+def test_work_visa_filter_allows_generic_job():
+    job = {
+        "title": "Backend Engineer",
+        "description": "Build APIs with Python and FastAPI in Singapore.",
+    }
+    assert _is_work_visa_ineligible(job) is False

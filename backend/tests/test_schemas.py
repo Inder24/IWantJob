@@ -3,6 +3,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.schemas import UserCreate, UserLogin, Resume, ParsedData
+from app.routers.jobs import AutoSearchRequest
 
 
 def test_usercreate_happy_path():
@@ -39,3 +40,13 @@ def test_resume_sad_path_missing_filename():
             search_terms=[],
             updated_at=datetime.utcnow(),
         )
+
+
+def test_auto_search_request_defaults_work_auth_mode():
+    req = AutoSearchRequest()
+    assert req.work_auth_mode == "singapore_pr"
+
+
+def test_auto_search_request_rejects_invalid_work_auth_mode():
+    with pytest.raises(ValidationError):
+        AutoSearchRequest(work_auth_mode="invalid_mode")

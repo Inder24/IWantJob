@@ -209,6 +209,7 @@ async function runAutoJobSearch() {
     const errorDiv = document.getElementById('uploadError');
     const button = document.getElementById('jobSearchButton');
     const metaDiv = document.getElementById('jobSearchMeta');
+    const selectedMode = document.querySelector('input[name="workAuthMode"]:checked')?.value || 'singapore_pr';
 
     try {
         errorDiv.textContent = '';
@@ -227,7 +228,8 @@ async function runAutoJobSearch() {
                 max_terms: 6,
                 per_source_page: 0,
                 max_total_requests: 12,
-                max_concurrency: 3
+                max_concurrency: 3,
+                work_auth_mode: selectedMode
             })
         });
         const data = await response.json();
@@ -236,7 +238,7 @@ async function runAutoJobSearch() {
         }
 
         statusDiv.textContent = `✅ Job search done: ${data.deduped_count} jobs`;
-        metaDiv.textContent = `Requests: ${data.search_requests_planned} | Concurrency: ${data.max_concurrency_used}`;
+        metaDiv.textContent = `Mode: ${data.work_auth_mode || selectedMode} | Requests: ${data.search_requests_planned} | Concurrency: ${data.max_concurrency_used} | Filtered: ${data.work_auth_filtered_out || 0}`;
         renderJobs(data.jobs || []);
     } catch (error) {
         errorDiv.textContent = error.message || 'Job search failed. Please try again.';

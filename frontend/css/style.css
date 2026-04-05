@@ -118,6 +118,26 @@ body {
     margin-top: 8px;
 }
 
+.auth-mode-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.auth-mode-label {
+    color: #555;
+    font-weight: 500;
+}
+
+.auth-mode-group label {
+    color: #444;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
 #jobsList p {
     margin: 8px 0;
     padding: 10px;

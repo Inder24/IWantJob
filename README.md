@@ -150,13 +150,21 @@ Top 4 returned jobs are freshness-aware: jobs already surfaced today are deprior
 curl -X POST http://localhost:8000/api/jobs/auto-search \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"location":"Singapore","max_terms":6,"per_source_page":0,"max_total_requests":12,"max_concurrency":3}'
+  -d '{"location":"Singapore","max_terms":6,"per_source_page":0,"max_total_requests":12,"max_concurrency":3,"work_auth_mode":"singapore_pr"}'
 ```
 
 Search budget logic:
 - planned requests = `min(max_total_requests, max_terms * 3_sources)`
 - default request cap = `12`
 - default parallelism cap = `3`
+
+Work authorization mode:
+- `work_auth_mode: "singapore_pr"` (default): current ranking behavior, no strict exclusion.
+- `work_auth_mode: "work_visa"`: filters out jobs that mention non-sponsorship or SG/PR-only eligibility (e.g. `pr only`, `no sponsorship`, `work pass not provided`) before dedupe/top-4 ranking.
+
+Response metadata now includes:
+- `work_auth_mode`
+- `work_auth_filtered_out`
 
 Skill quality:
 - skills are sanitized before save (removes bracket artifacts)
