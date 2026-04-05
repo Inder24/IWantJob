@@ -204,6 +204,62 @@ async function checkAtsScore() {
     }
 }
 
+async function runAutoJobSearch() {
+    const statusDiv = document.getElementById('resumeStatus');
+    const errorDiv = document.getElementById('uploadError');
+    const button = document.getElementById('jobSearchButton');
+    const metaDiv = document.getElementById('jobSearchMeta');
+
+    try {
+        errorDiv.textContent = '';
+        button.disabled = true;
+        button.textContent = 'Searching...';
+        statusDiv.textContent = '🔎 Running bounded parallel job search...';
+
+        const response = await fetch(`${API_URL}/jobs/auto-search`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                location: 'Singapore',
+                max_terms: 6,
+                per_source_page: 0,
+                max_total_requests: 12,
+                max_concurrency: 3
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.detail || 'Auto search failed');
+        }
+
+        statusDiv.textContent = `✅ Job search done: ${data.deduped_count} jobs`;
+        metaDiv.textContent = `Requests: ${data.search_requests_planned} | Concurrency: ${data.max_concurrency_used}`;
+        renderJobs(data.jobs || []);
+    } catch (error) {
+        errorDiv.textContent = error.message || 'Job search failed. Please try again.';
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Search Jobs Now';
+    }
+}
+
+function renderJobs(jobs) {
+    const jobsDiv = document.getElementById('jobsList');
+    if (!jobs || jobs.length === 0) {
+        jobsDiv.innerHTML = '<p>No jobs found yet.</p>';
+        return;
+    }
+    jobsDiv.innerHTML = jobs.slice(0, 20).map(job => {
+        const score = job.match_score ?? 0;
+        const platform = (job.platform || '').toUpperCase();
+        const link = job.url ? `<a href="${job.url}" target="_blank" rel="noopener noreferrer">Open</a>` : '';
+        return `<p>📌 <strong>${job.title || 'Unknown role'}</strong> @ ${job.company || 'Unknown'} (${platform})<br>📍 ${job.location || 'N/A'} | 🎯 Score: ${score}/100 ${link ? `| ${link}` : ''}</p>`;
+    }).join('');
+}
+
 // Display Resume Data
 function displayResume(resume) {
     const parsed = resume.parsed_data;
@@ -277,6 +333,12 @@ function displayResume(resume) {
             .join('');
     } else {
         suggestionsDiv.innerHTML = '<p>No suggestions available yet</p>';
+    }
+
+    // Keep job section stable on resume load
+    const jobsDiv = document.getElementById('jobsList');
+    if (jobsDiv && !jobsDiv.innerHTML.trim()) {
+        jobsDiv.innerHTML = '<p>Click "Search Jobs Now" to fetch ranked jobs.</p>';
     }
     
     // Show the display section

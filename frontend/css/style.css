@@ -114,6 +114,18 @@ body {
     margin-top: 6px;
 }
 
+#jobSearchButton {
+    margin-top: 8px;
+}
+
+#jobsList p {
+    margin: 8px 0;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    color: #444;
+}
+
 .btn-secondary {
     background: #6c757d;
     color: white;

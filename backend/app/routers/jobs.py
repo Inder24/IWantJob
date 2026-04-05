@@ -1,6 +1,7 @@
 """
 Jobs router for multi-source search and persistence.
 """
+import asyncio
 from datetime import datetime
 import uuid
 from typing import Dict, List, Tuple
@@ -35,6 +36,8 @@ class AutoSearchRequest(BaseModel):
     location: str = Field(default="Singapore", max_length=120)
     max_terms: int = Field(default=6, ge=1, le=12)
     per_source_page: int = Field(default=0, ge=0, le=2)
+    max_total_requests: int = Field(default=12, ge=1, le=36)
+    max_concurrency: int = Field(default=3, ge=1, le=6)
 
 
 def _normalize_job_url(url: str) -> str:
@@ -254,19 +257,46 @@ async def auto_search_jobs(
     all_results: List[Tuple[str, str, dict]] = []
     failures: List[str] = []
 
+    source_functions = (
+        ("linkedin", linkedin_search_service.search_jobs),
+        ("indeed", indeed_search_service.search_jobs),
+        ("foundit", foundit_search_service.search_jobs),
+    )
+    search_plan: List[Tuple[str, str]] = []
     for term in terms:
-        for source_name, source_fn in (
-            ("linkedin", linkedin_search_service.search_jobs),
-            ("indeed", indeed_search_service.search_jobs),
-            ("foundit", foundit_search_service.search_jobs),
-        ):
-            try:
-                jobs = source_fn(term, payload.location, payload.per_source_page)
-                await _upsert_jobs(db, source_name, jobs, term, payload.location)
-                for job in jobs:
-                    all_results.append((source_name, term, job))
-            except Exception as exc:
-                failures.append(f"{source_name}:{term} -> {str(exc)}")
+        for source_name, _ in source_functions:
+            search_plan.append((source_name, term))
+
+    max_total_requests = min(payload.max_total_requests, len(search_plan))
+    search_plan = search_plan[:max_total_requests]
+    max_concurrency = min(payload.max_concurrency, max_total_requests)
+    semaphore = asyncio.Semaphore(max_concurrency)
+    fn_map = {name: fn for name, fn in source_functions}
+
+    async def _run_search_call(source_name: str, term: str):
+        async with semaphore:
+            jobs = await asyncio.to_thread(
+                fn_map[source_name],
+                term,
+                payload.location,
+                payload.per_source_page,
+            )
+            return source_name, term, jobs
+
+    tasks = [_run_search_call(source_name, term) for source_name, term in search_plan]
+    search_outputs = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for item in search_outputs:
+        if isinstance(item, Exception):
+            failures.append(str(item))
+            continue
+        source_name, term, jobs = item
+        try:
+            await _upsert_jobs(db, source_name, jobs, term, payload.location)
+            for job in jobs:
+                all_results.append((source_name, term, job))
+        except Exception as exc:
+            failures.append(f"{source_name}:{term} -> {str(exc)}")
 
     resume_skills = ((resume.get("parsed_data") or {}).get("skills") or [])
     ranked: List[Dict[str, object]] = []
@@ -296,6 +326,8 @@ async def auto_search_jobs(
         "message": "Auto search completed",
         "search_terms_used": terms,
         "location": payload.location,
+        "search_requests_planned": len(search_plan),
+        "max_concurrency_used": max_concurrency,
         "total_candidates": len(ranked),
         "deduped_count": len(deduped),
         "failures": failures[:20],

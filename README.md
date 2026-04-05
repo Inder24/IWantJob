@@ -149,8 +149,13 @@ Uses extracted resume skills + generated search terms, then searches LinkedIn + 
 curl -X POST http://localhost:8000/api/jobs/auto-search \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"location":"Singapore","max_terms":6,"per_source_page":0}'
+  -d '{"location":"Singapore","max_terms":6,"per_source_page":0,"max_total_requests":12,"max_concurrency":3}'
 ```
+
+Search budget logic:
+- planned requests = `min(max_total_requests, max_terms * 3_sources)`
+- default request cap = `12`
+- default parallelism cap = `3`
 
 ## Notes
 
