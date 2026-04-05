@@ -12,8 +12,9 @@ Simple full-stack tool to upload a resume, extract skills/search terms, and run 
 - AI trigger button: **Check ATS Score via AI**
 - ATS score + improvement suggestions persisted with timestamp
 - Resume dedupe by `content_hash` (same resume is reused, not duplicated)
+- LinkedIn integration (phase-1): fetch + normalize + store jobs
 - Simple HTML/CSS/JS frontend
-- Backend tests (`17 passed`)
+- Backend tests (`20 passed`)
 
 ## Current architecture
 
@@ -79,6 +80,11 @@ The app currently runs on local SQLite (`backend/job_search.db`) via `app/databa
 - `POST /api/resume/me/ats-score` ← trigger ATS scoring via AI
 - `DELETE /api/resume/me`
 
+### Jobs
+
+- `POST /api/jobs/linkedin/search` ← fetch from LinkedIn via SerpAPI and upsert locally
+- `GET /api/jobs/me` ← list stored jobs from local DB
+
 ## How it works (current flow)
 
 1. User logs in and uploads a PDF resume.
@@ -89,6 +95,26 @@ The app currently runs on local SQLite (`backend/job_search.db`) via `app/databa
    - `resume_score` (0-100)
    - `improvement_suggestions`
 6. UI shows parsed sections, score, suggestions, and `last_ats_checked_at`.
+
+## LinkedIn integration (phase-1)
+
+Set in `.env`:
+
+- `SERPAPI_API_KEY=...`
+
+Optional:
+
+- `LINKEDIN_MAX_RESULTS=20`
+- `LINKEDIN_HTTP_TIMEOUT_SECONDS=20`
+
+Example call:
+
+```bash
+curl -X POST http://localhost:8000/api/jobs/linkedin/search \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"python developer","location":"Singapore","page":0}'
+```
 
 ## Notes
 

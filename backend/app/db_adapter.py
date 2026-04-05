@@ -46,6 +46,48 @@ class Collection:
             result['_id'] = result.get('id', str(uuid.uuid4()))
             return result
         return None
+
+    async def find(
+        self,
+        query: Optional[Dict[str, Any]] = None,
+        limit: int = 50,
+        order_by: Optional[str] = None,
+        desc: bool = False,
+    ) -> list[Dict[str, Any]]:
+        """Find multiple documents matching query."""
+        cursor = self.conn.cursor()
+        query = query or {}
+
+        where_parts = []
+        values = []
+        for key, value in query.items():
+            where_parts.append(f"{_normalize_key(key)} = ?")
+            values.append(value)
+
+        where_clause = " AND ".join(where_parts) if where_parts else "1=1"
+        order_clause = ""
+        if order_by:
+            direction = "DESC" if desc else "ASC"
+            order_clause = f" ORDER BY {_normalize_key(order_by)} {direction}"
+        if limit < 1:
+            limit = 1
+
+        cursor.execute(
+            f"SELECT * FROM {self.table_name} WHERE {where_clause}{order_clause} LIMIT ?",
+            values + [limit],
+        )
+        rows = cursor.fetchall()
+
+        results = []
+        for row in rows:
+            item = dict(row)
+            if 'parsed_data' in item and isinstance(item['parsed_data'], str):
+                item['parsed_data'] = json.loads(item['parsed_data'])
+            if 'search_terms' in item and isinstance(item['search_terms'], str):
+                item['search_terms'] = json.loads(item['search_terms'])
+            item['_id'] = item.get('id', str(uuid.uuid4()))
+            results.append(item)
+        return results
         
     async def insert_one(self, document: Dict[str, Any]) -> Any:
         """Insert one document"""
